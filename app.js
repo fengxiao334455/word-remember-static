@@ -33,7 +33,7 @@ function getWordIndex(word) {
 }
 
 // ===== 路由 =====
-function route(name) {
+function route(name, sessionWords) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const el = document.getElementById('page-' + name);
   if (el) {
@@ -43,7 +43,7 @@ function route(name) {
   switch(name) {
     case 'home': renderHome(); break;
     case 'learn': renderLearn(); break;
-    case 'review': renderReview(); break;
+    case 'review': renderReview(sessionWords); break;
     case 'wordlist': renderWordlist(); break;
   }
 }
@@ -187,7 +187,8 @@ function nextLearnCard() {
   learnRevealed = false;
 
   if (learnIndex >= learnWords.length - 1) {
-    route('home');
+    const sessionWordStrs = learnWords.map(w => w.w);
+    route('review', sessionWordStrs);
     toast(`✅ 学习了 ${learnWords.length} 个新词！`);
   } else {
     showLearnCard(learnIndex + 1);
@@ -213,18 +214,31 @@ let reviewWords = [];
 let reviewIndex = 0;
 let reviewRevealed = false;
 
-function renderReview() {
+function renderReview(sessionWords) {
   const p = loadProgress();
-  const now = new Date();
-  const today = dateStr(now);
+  const today = dateStr(new Date());
 
-  const dueWords = p.learnedWords.filter(w => {
-    if (w.stage >= 5) return false;
-    if (!w.nextReview) return true;
-    return w.nextReview <= today;
-  });
+  let reviewPool = [];
 
-  if (dueWords.length === 0) {
+  if (sessionWords && sessionWords.length > 0) {
+    // 刚学的词
+    const newWords = sessionWords
+      .map(w => p.learnedWords.find(lw => lw.word === w))
+      .filter(Boolean);
+
+    // 从所有已学单词中随机挑 15 个（排除刚学的）
+    const oldWords = p.learnedWords
+      .filter(w => !sessionWords.includes(w.word))
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 15);
+
+    reviewPool = [...newWords, ...oldWords];
+  } else {
+    // 从主页直接复习: 随机 15 个已学单词
+    reviewPool = [...p.learnedWords].sort(() => Math.random() - 0.5).slice(0, 15);
+  }
+
+  if (reviewPool.length === 0) {
     el('review-content').style.display = 'none';
     el('review-empty').style.display = 'block';
     const goBtn = el('review-empty').querySelector('.btn');
@@ -235,15 +249,7 @@ function renderReview() {
   el('review-content').style.display = 'flex';
   el('review-empty').style.display = 'none';
 
-  // Prefer words with lower stage, and those with incorrectCount > correctCount
-  dueWords.sort((a, b) => {
-    if ((a.incorrectCount - a.correctCount) !== (b.incorrectCount - b.correctCount)) {
-      return (b.incorrectCount - b.correctCount) - (a.incorrectCount - a.correctCount);
-    }
-    return a.stage - b.stage;
-  });
-
-  reviewWords = dueWords.slice(0, 20);
+  reviewWords = reviewPool;
   reviewIndex = 0;
   reviewRevealed = false;
   showReviewCard(0);
